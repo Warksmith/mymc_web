@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:dart_mymc/dart_mymc.dart';
+import 'package:mymc_web/card_image.dart';
 import 'icon_renderer.dart';
 
 // --- Extension Helpers for Migration ---
@@ -59,6 +60,7 @@ class AppState {
 }
 
 final state = AppState();
+Timer? toastTimer;
 
 // --- Initialization ---
 
@@ -132,6 +134,7 @@ void setupFileInput(int slotIndex) {
     if (files != null && files.length > 0) {
       await loadFiles(slotIndex, files);
     }
+    input.value = '';
   });
 }
 
@@ -142,6 +145,7 @@ void setupImportSaveInput() {
     if (files != null && files.length > 0) {
       await importSaveFiles(files);
     }
+    input.value = '';
   });
 }
 
@@ -170,8 +174,8 @@ Future<void> loadFiles(int slotIndex, web.FileList files) async {
   }
   
   fileList.sort((a, b) {
-    final aIsCard = a.name.toLowerCase().endsWith('.ps2');
-    final bIsCard = b.name.toLowerCase().endsWith('.ps2');
+    final aIsCard = CardImage.isCardFilename(a.name);
+    final bIsCard = CardImage.isCardFilename(b.name);
     if (aIsCard && !bIsCard) return -1;
     if (!aIsCard && bIsCard) return 1;
     return 0;
@@ -209,13 +213,17 @@ Future<void> loadFile(int slotIndex, web.File file, {bool silent = false}) async
   final arrayBuffer = await file.arrayBuffer().toDart;
   final bytes = arrayBuffer.toDart.asUint8List();
 
-  if (name.endsWith('.ps2')) {
+  if (CardImage.isCardFilename(name)) {
     try {
-      final card = Ps2Card.openMemory(bytes);
+      final card = CardImage.open(bytes);
+      // Validate the save listing before replacing the card already in this slot.
+      card.info;
       if (slotIndex == 1) {
+        state.slot1?.close();
         state.slot1 = card;
         state.slot1Name = file.name;
       } else {
+        state.slot2?.close();
         state.slot2 = card;
         state.slot2Name = file.name;
       }
@@ -235,7 +243,7 @@ Future<void> loadFile(int slotIndex, web.File file, {bool silent = false}) async
       return;
     }
     try {
-      targetCard.importSave(bytes, overwrite: true);
+      CardImage.importSave(targetCard, bytes, file.name);
       updateSlotInfo(slotIndex);
       if (web.document.getElementById('browser-grid')?.hasClass('active') == true && state.currentSlotIndex == slotIndex) {
         openSlot(slotIndex);
@@ -255,7 +263,7 @@ Future<void> importSaveFile(web.File file) async {
   final bytes = arrayBuffer.toDart.asUint8List();
   
   try {
-    card.importSave(bytes, overwrite: true);
+    CardImage.importSave(card, bytes, file.name);
     updateSlotInfo(state.currentSlotIndex);
     openSlot(state.currentSlotIndex);
     showToast('Imported ${file.name}');
@@ -356,32 +364,49 @@ void renderSaveList(Ps2Card card) {
 
 void promptCreateCard(int n) {
   showModal(
-    title: 'Format Card',
-    body: 'Select size for Slot $n (All existing data in slot will be lost):',
+    title: 'Create Card',
+    body: 'Choose a format for Slot $n. This replaces the card in this slot; export any changes first.',
     buttons: [
-      ModalButton('8 MB', () => finishFormat(n, 8)),
-      ModalButton('16 MB', () => finishFormat(n, 16)),
-      ModalButton('32 MB', () => finishFormat(n, 32)),
-      ModalButton('64 MB', () => finishFormat(n, 64)),
+      ModalButton('.mcd — SD2PSX', () => promptCardSize(n, CardFormat.mcd)),
+      ModalButton('.ps2 — PCSX2', () => promptCardSize(n, CardFormat.ps2)),
       ModalButton('Cancel', closeModal, isCancel: true),
     ],
   );
 }
 
-void finishFormat(int n, int sizeMb) {
+void promptCardSize(int n, CardFormat format) {
+  showModal(
+    title: 'Create .${format.name} Card',
+    body: 'Select a size. 8 MB is recommended for game compatibility.',
+    buttons: [
+      for (final size in [8, 16, 32, 64, 1, 2, 4, 128])
+        ModalButton('$size MB', () => finishFormat(n, size, format)),
+      ModalButton('Cancel', closeModal, isCancel: true),
+    ],
+  );
+}
+
+void finishFormat(int n, int sizeMb, CardFormat format) {
   showToast('Formatting ${sizeMb}MB Card...');
   Timer(const Duration(milliseconds: 500), () {
-    final card = Ps2Card.format(sizeMb: sizeMb);
-    if (n == 1) {
-      state.slot1 = card;
-      state.slot1Name = null;
-    } else {
-      state.slot2 = card;
-      state.slot2Name = null;
+    try {
+      final card = CardImage.create(sizeMb: sizeMb);
+      final name = 'memory_card_${sizeMb}MB.${format.name}';
+      if (n == 1) {
+        state.slot1?.close();
+        state.slot1 = card;
+        state.slot1Name = name;
+      } else {
+        state.slot2?.close();
+        state.slot2 = card;
+        state.slot2Name = name;
+      }
+      updateSlotInfo(n);
+      updateSlotIcons();
+      closeModal();
+    } catch (e) {
+      showToast('Error creating card: $e');
     }
-    updateSlotInfo(n);
-    updateSlotIcons();
-    closeModal();
   });
 }
 
@@ -396,22 +421,30 @@ void exportCard(int n) {
   
   showModal(
     title: 'Export Card',
-    body: 'Choose export format for Slot $n:',
+    body: 'Download Slot $n as a card image, convert it to the other format, or export all files and folders as ZIP.',
     buttons: [
       ModalButton('Download .ps2 (Image)', () {
         try {
-          final bytes = card.toBytes();
-          triggerDownload(name.endsWith('.ps2') ? name : '$name.ps2', bytes);
+          final bytes = CardImage.export(card, CardFormat.ps2);
+          triggerDownload(CardImage.downloadName(name, 'ps2'), bytes);
           closeModal();
         } catch (e) {
           showToast('Error exporting card: $e');
         }
       }),
-      ModalButton('Download .zip (Contents)', () {
+      ModalButton('Download .mcd (SD2PSX)', () {
         try {
-          final bytes = card.exportAllZip();
-          final zipName = name.replaceAll('.ps2', '') + '.zip';
-          triggerDownload(zipName, bytes);
+          final bytes = CardImage.export(card, CardFormat.mcd);
+          triggerDownload(CardImage.downloadName(name, 'mcd'), bytes);
+          closeModal();
+        } catch (e) {
+          showToast('Error exporting card: $e');
+        }
+      }),
+      ModalButton('Download .zip (All files and folders)', () {
+        try {
+          final bytes = CardImage.exportContentsZip(card);
+          triggerDownload(CardImage.downloadName(name, 'zip'), bytes, mimeType: 'application/zip');
           closeModal();
         } catch (e) {
           showToast('Error exporting zip: $e');
@@ -483,14 +516,18 @@ void downloadSaveZip(Ps2SaveInfo save) {
   triggerDownload('${save.dirName}.zip', bytes);
 }
 
-void triggerDownload(String filename, Uint8List bytes) {
-  final blob = web.Blob([bytes.toJS].toJS);
+void triggerDownload(String filename, Uint8List bytes, {String mimeType = 'application/octet-stream'}) {
+  final blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mimeType));
   final url = web.URL.createObjectURL(blob);
   final a = web.document.createElement('a') as web.HTMLAnchorElement;
   a.href = url;
   a.download = filename;
+  a.style.display = 'none';
+  web.document.body!.appendChild(a);
   a.click();
-  web.URL.revokeObjectURL(url);
+  a.remove();
+  // Let the browser start consuming the blob before releasing it.
+  Timer(const Duration(minutes: 1), () => web.URL.revokeObjectURL(url));
 }
 
 // --- UI Helpers ---
@@ -521,7 +558,8 @@ void updateSlotInfo(int n) {
     text.addClass('hidden');
   } else {
     final info = card.info;
-    status.textContent = 'Ready';
+    status.textContent = (n == 1 ? state.slot1Name : state.slot2Name) ?? 'Ready';
+    status.setAttribute('title', status.textContent ?? 'Ready');
     bar.removeClass('hidden');
     text.removeClass('hidden');
     
@@ -595,6 +633,7 @@ class ModalButton {
 }
 
 void showModal({required String title, required String body, List<ModalButton>? buttons}) {
+  toastTimer?.cancel();
   web.document.getElementById('modal-title')!.textContent = title;
   web.document.getElementById('modal-body')!.innerHTML = '<p style="text-align:center; color:#ccc; margin: 20px 0;">$body</p>'.toJS;
   
@@ -634,6 +673,7 @@ void showModal({required String title, required String body, List<ModalButton>? 
 }
 
 void closeModal() {
+  toastTimer?.cancel();
   (web.document.getElementById('modal-overlay') as web.HTMLElement).style.display = 'none';
   if (web.document.getElementById('browser-grid')?.hasClass('active') == true) {
     setFocusScope('.save-card, .back-btn, .create-btn');
@@ -643,6 +683,7 @@ void closeModal() {
 }
 
 void showToast(String message, {String title = 'Notification'}) {
+  toastTimer?.cancel();
   final titleEl = web.document.getElementById('modal-title')!;
   if (title == 'Notification' || title.isEmpty) {
     titleEl.textContent = '';
@@ -653,7 +694,7 @@ void showToast(String message, {String title = 'Notification'}) {
   web.document.getElementById('modal-buttons')!.innerHTML = ''.toJS;
   web.document.getElementById('modal-footer-dynamic')!.innerHTML = ''.toJS;
   (web.document.getElementById('modal-overlay') as web.HTMLElement).style.display = 'flex';
-  Timer(const Duration(milliseconds: 1500), closeModal);
+  toastTimer = Timer(const Duration(milliseconds: 1500), closeModal);
 }
 
 // --- Navigation & Accessibility ---
@@ -940,7 +981,8 @@ void openHelp() {
 }
 
 final helpContent = [
-  ('General Usage', 'Welcome to PS2 Card Manager, a .ps2 card image save manager for PCSX2 (based on mymc). Click on a slot to load a card from your computer or from our server library. You can also drag and drop .ps2 files directly onto a slot.'),
+  ('General Usage', 'Manage PS2 .ps2 and .mcd memory cards. Click on an empty slot to load a card or drag and drop a card onto either slot. Create New supports both formats. PS1 cards are not supported.'),
+  ('Export and Convert', 'Export Card downloads a .ps2 image for PCSX2, a raw .mcd image for SD2PSX, or a ZIP of every file and folder. To convert, load either card format and download the other. Card images preserve filesystem metadata; ZIP exports contain files and folders.'),
   ('Navigation', 'Use Arrow Keys to move selection, Enter to select, and Esc/Backspace to go back.'),
   ('Copying', 'Load cards into both slots to enable copying saves between them. You can also drop .max/.psu save files directly into a card view.'),
 ];

@@ -297,6 +297,10 @@ body {
 }
 
 .status-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 1rem;
     color: #888;
     margin-top: 5px;
@@ -432,6 +436,8 @@ body {
 }
 
 #ps2-modal {
+    max-height: 90vh;
+    overflow-y: auto;
     background: var(--ps2-modal-bg);
     width: 450px;
     border: 2px solid var(--ps2-blue);

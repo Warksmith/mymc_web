@@ -14,8 +14,11 @@ dependencies:
   dart_mymc:
     git:
       url: https://github.com/BAD-AL/dart_mymc.git
+      ref: 3f464fcab3ea27818f1224978d6c78ee34db1493
 
 dev_dependencies:
+  crypto: ^3.0.7
+  test: ^1.29.0
   build_runner: ^2.4.15
   build_web_compilers: ^4.1.6
   lints: ^6.0.0

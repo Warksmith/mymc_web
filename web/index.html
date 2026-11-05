@@ -17,7 +17,7 @@
             </div>
         </div>
         <nav class="header-center">
-            <a href="https://github.com/BAD-AL/dart_mymc" target="_blank" class="header-link">GitHub</a>
+            <a href="https://github.com/Warksmith/mymc_web" target="_blank" class="header-link">GitHub</a>
             <a href="https://web.archive.org/web/20050124144746/http://us.codejunkies.com/saves_maxdrive2.asp?rf=0&c=US&cr=USD&cs=$&r=0&l=1&p=1&st=O" target="_blank" class="header-link">CodeJunkies</a>
             <div id="other-links-trigger" class="header-link" style="cursor: pointer;">Other links</div>
         </nav>
@@ -51,7 +51,7 @@
                     <button class="create-btn" id="create-btn-1">Create New</button>
                     <button class="create-btn export-btn" id="export-btn-1">Export Card</button>
                     <!-- Hidden file input for drag and drop / click to load -->
-                    <input type="file" id="file-input-1" style="display: none;" accept=".ps2" multiple>
+                    <input type="file" id="file-input-1" style="display: none;" accept=".ps2,.mcd" multiple>
                 </div>
                 <div class="slot" id="slot-2">
                     <div class="slot-clickable-area" id="slot-area-2">
@@ -65,11 +65,11 @@
                     </div>
                     <button class="create-btn" id="create-btn-2">Create New</button>
                     <button class="create-btn export-btn" id="export-btn-2">Export Card</button>
-                    <input type="file" id="file-input-2" style="display: none;" accept=".ps2" multiple>
+                    <input type="file" id="file-input-2" style="display: none;" accept=".ps2,.mcd" multiple>
                 </div>
             </div>
             <!-- Global file input for importing saves -->
-            <input type="file" id="import-save-input" style="display: none;" accept=".max,.psu,.sps,.cbs" multiple>
+            <input type="file" id="import-save-input" style="display: none;" accept=".max,.psu,.sps,.cbs,.zip" multiple>
         </section>
 
         <!-- BROWSER GRID SCREEN -->
@@ -80,7 +80,7 @@
                     <h2 id="current-slot-title" class="glow-text">Slot 1</h2>
                 </div>
                 <div class="browser-actions">
-                   <button class="create-btn" id="import-save-btn" title="Import a .max or .psu PS2 save file">Import Save</button>
+                   <button class="create-btn" id="import-save-btn" title="Import PS2 saves or a ZIP of save folders">Import Save</button>
                 </div>
             </header>
             <div id="save-list" class="grid-view"></div>
