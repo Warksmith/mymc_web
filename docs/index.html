@@ -75,15 +75,47 @@
         <!-- BROWSER GRID SCREEN -->
         <section id="browser-grid" class="screen">
             <header class="browser-header">
-                <button class="back-btn" id="browser-back-btn">Back</button>
+                <button class="back-btn" id="browser-back-btn">Cards</button>
                 <div class="header-info">
                     <h2 id="current-slot-title" class="glow-text">Slot 1</h2>
+                    <p id="current-card-summary"></p>
                 </div>
                 <div class="browser-actions">
                    <button class="create-btn" id="import-save-btn" title="Import PS2 saves or a ZIP of save folders">Import Save</button>
+                   <button class="create-btn" id="browser-export-card">Export Card</button>
+                   <button class="create-btn primary-action" id="browser-export-all">Export all as ZIP</button>
                 </div>
             </header>
-            <div id="save-list" class="grid-view"></div>
+            <div class="browser-view-switch" role="group" aria-label="Card view">
+                <button type="button" id="files-view-btn" aria-pressed="true">Files</button>
+                <button type="button" id="icons-view-btn" aria-pressed="false">Save icons</button>
+            </div>
+            <div id="file-browser" class="file-browser">
+                <div class="file-navigation">
+                    <button type="button" id="folder-up" class="file-action" title="Parent folder (Alt+Up)">Up</button>
+                    <nav id="file-breadcrumbs" aria-label="Folder path"></nav>
+                    <input id="file-filter" type="search" placeholder="Filter this folder…" aria-label="Filter this folder">
+                </div>
+                <div class="file-selection-toolbar">
+                    <span id="file-selection-count" role="status">0 selected</span>
+                    <button type="button" id="download-selection" class="file-action" disabled>Download selected as ZIP</button>
+                    <button type="button" id="clear-file-selection" class="file-action" disabled>Clear selection</button>
+                    <span id="file-item-count"></span>
+                </div>
+                <div class="file-table-scroll">
+                    <table class="file-table" aria-label="Memory card files">
+                        <thead><tr>
+                            <th class="file-check"><input id="select-all-files" type="checkbox" aria-label="Select all items in this folder"></th>
+                            <th scope="col">Name</th><th scope="col" class="file-kind">Type</th>
+                            <th scope="col">Size</th><th scope="col" class="file-modified">Modified</th><th scope="col">Actions</th>
+                        </tr></thead>
+                        <tbody id="file-rows"></tbody>
+                    </table>
+                    <p id="file-list-message" role="status" hidden></p>
+                </div>
+                <p class="file-browser-hint">Click a folder to open it. Select items with the checkboxes. ZIPs keep their folder paths.</p>
+            </div>
+            <div id="save-list" class="grid-view" hidden></div>
         </section>
     </main>
 

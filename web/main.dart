@@ -6,6 +6,7 @@ import 'package:web/web.dart' as web;
 import 'package:dart_mymc/dart_mymc.dart';
 import 'package:mymc_web/card_image.dart';
 import 'icon_renderer.dart';
+import 'file_browser.dart';
 
 // --- Extension Helpers for Migration ---
 
@@ -45,6 +46,7 @@ class AppState {
   String currentTheme = 'classic';
   bool animationPaused = true;
   int helpPage = 0;
+  bool filesView = true;
   
   // Navigation State
   int focusIndex = 0;
@@ -61,6 +63,7 @@ class AppState {
 
 final state = AppState();
 Timer? toastTimer;
+late FileBrowser fileBrowser;
 
 // --- Initialization ---
 
@@ -100,6 +103,24 @@ void initUI() {
   web.document.getElementById('freeze-toggle')?.onClick.listen((_) => toggleAnimation());
   
   web.document.getElementById('import-save-btn')?.onClick.listen((_) => triggerImportSave());
+  web.document.getElementById('browser-export-card')?.onClick.listen((_) => exportCard(state.currentSlotIndex));
+  web.document.getElementById('browser-export-all')?.onClick.listen((_) => downloadAllContents());
+  web.document.getElementById('files-view-btn')?.onClick.listen((_) => setBrowserView(true));
+  web.document.getElementById('icons-view-btn')?.onClick.listen((_) => setBrowserView(false));
+  fileBrowser = FileBrowser(
+    card: () => state.currentCard!,
+    cardName: () => state.currentCardName,
+    download: (name, bytes, zip) => triggerDownload(name, bytes, mimeType: zip ? 'application/zip' : 'application/octet-stream'),
+    onError: (message) => showToast(message),
+    onSaveActions: (dirName) {
+      try {
+        final save = state.currentCard!.listSaves().firstWhere((save) => save.dirName == dirName);
+        openSaveMenu(save);
+      } catch (e) {
+        showToast('Could not open save actions: $e');
+      }
+    },
+  );
 
   setupDragAndDrop(1, web.document.getElementById('slot-1')!);
   setupDragAndDrop(2, web.document.getElementById('slot-2')!);
@@ -300,8 +321,41 @@ void openSlot(int n) {
   final titleEl = web.document.getElementById('current-slot-title');
   if (titleEl != null) titleEl.textContent = 'Slot $n';
   
-  renderSaveList(card);
   showScreen('browser-grid');
+  renderCardBrowser(resetPath: true);
+}
+
+void setBrowserView(bool files) {
+  state.filesView = files;
+  renderCardBrowser();
+}
+
+void renderCardBrowser({bool resetPath = false}) {
+  state.rotationTimer?.cancel();
+  if (resetPath) fileBrowser.reset();
+  final card = state.currentCard!;
+  final info = card.info;
+  web.document.getElementById('current-card-summary')!.textContent =
+      '${state.currentCardName} · ${(info.freeBytes / (1024 * 1024)).toStringAsFixed(2)} MB free';
+  (web.document.getElementById('file-browser') as web.HTMLElement).hidden = (!state.filesView).toJS;
+  (web.document.getElementById('save-list') as web.HTMLElement).hidden = state.filesView.toJS;
+  web.document.getElementById('files-view-btn')!.setAttribute('aria-pressed', '${state.filesView}');
+  web.document.getElementById('icons-view-btn')!.setAttribute('aria-pressed', '${!state.filesView}');
+  if (state.filesView) {
+    fileBrowser.show();
+  } else {
+    renderSaveList(card);
+  }
+  setFocusScope('.save-card, .back-btn, .create-btn');
+}
+
+void downloadAllContents() {
+  try {
+    triggerDownload(CardImage.downloadName(state.currentCardName, 'zip'),
+      CardImage.exportContentsZip(state.currentCard!), mimeType: 'application/zip');
+  } catch (e) {
+    showToast('Error exporting card contents: $e');
+  }
 }
 
 void renderSaveList(Ps2Card card) {
@@ -700,6 +754,18 @@ void showToast(String message, {String title = 'Notification'}) {
 // --- Navigation & Accessibility ---
 
 void handleKeyDown(web.KeyboardEvent e) {
+  final modalOpen = (web.document.getElementById('modal-overlay') as web.HTMLElement).style.display == 'flex';
+  if (state.filesView && web.document.getElementById('browser-grid')!.hasClass('active') && !modalOpen) {
+    // Preserve native text editing, checkbox, button, and Tab behavior in Files.
+    if (e.target is web.HTMLInputElement) return;
+    if (e.key == 'Backspace' || (e.altKey && e.key == 'ArrowUp')) {
+      e.preventDefault();
+      fileBrowser.up();
+    } else if (e.key == 'Escape') {
+      showScreen('slot-select');
+    }
+    return;
+  }
   if (e.key == 'ArrowRight' || e.key == 'ArrowDown') {
     if (state.focusScope.isNotEmpty) {
       state.focusIndex = (state.focusIndex + 1) % state.focusScope.length;
@@ -725,6 +791,12 @@ void handleKeyDown(web.KeyboardEvent e) {
 
 void setFocusScope(String selector, {String? priorityId}) {
   Timer(const Duration(milliseconds: 50), () {
+    if (state.filesView && web.document.getElementById('browser-grid')!.hasClass('active') &&
+        (web.document.getElementById('modal-overlay') as web.HTMLElement).style.display != 'flex') {
+      for (final element in state.focusScope) { element.removeClass('focused'); }
+      state.focusScope = [];
+      return;
+    }
     final results = web.document.querySelectorAll(selector);
     final List<web.Element> elements = [];
     
@@ -981,6 +1053,7 @@ void openHelp() {
 }
 
 final helpContent = [
+  ('File Browser', 'Opening a card shows its folders and files. Click folder names to navigate, use checkboxes to select items, and download individual files or selected items as ZIP. Export all as ZIP always includes the entire card, even inside a folder or with a filter active. Save actions offers PSU/MAX export and copying. Use Save icons for the original view.'),
   ('General Usage', 'Manage PS2 .ps2 and .mcd memory cards. Click on an empty slot to load a card or drag and drop a card onto either slot. Create New supports both formats. PS1 cards are not supported.'),
   ('Export and Convert', 'Export Card downloads a .ps2 image for PCSX2, a raw .mcd image for SD2PSX, or a ZIP of every file and folder. To convert, load either card format and download the other. Card images preserve filesystem metadata; ZIP exports contain files and folders.'),
   ('Navigation', 'Use Arrow Keys to move selection, Enter to select, and Esc/Backspace to go back.'),
